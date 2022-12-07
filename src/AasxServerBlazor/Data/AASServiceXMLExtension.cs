@@ -45,7 +45,8 @@ namespace AasxServerBlazor.Data
                 {
                     children.Add(CreateXMLElementItem(item, child));
                 }
-            } else if (xmlObject is XElement)
+            }
+            else if (xmlObject is XElement)
             {
                 foreach (var child in (xmlObject as XElement).Elements())
                 {
@@ -122,7 +123,8 @@ namespace AasxServerBlazor.Data
                     default:
                         return null;
                 }
-            } else if (tag is XAttribute)
+            }
+            else if (tag is XAttribute)
             {
                 var xmlAttribute = tag as XAttribute;
 
@@ -162,7 +164,8 @@ namespace AasxServerBlazor.Data
             {
                 value = getTextValue(tag as XElement);
 
-            } else if (tag is XAttribute)
+            }
+            else if (tag is XAttribute)
             {
                 value = (tag as XAttribute).Value;
             }
@@ -207,8 +210,9 @@ namespace AasxServerBlazor.Data
         {
             if (item.Tag is XDocument)
             {
-                return "//*";
-            } else if (item.Tag is XElement)
+                return "/*";
+            }
+            else if (item.Tag is XElement)
             {
                 return CreateXpathRecursively(item.Tag as XElement);
             }
@@ -238,7 +242,7 @@ namespace AasxServerBlazor.Data
                     {
                         if (childrenWithCorrectName[i] == element)
                         {
-                            xPathSegment += "[" + (i+1) + "]";
+                            xPathSegment += "[" + (i + 1) + "]";
                         }
                     }
                 }
@@ -246,7 +250,8 @@ namespace AasxServerBlazor.Data
                 string parentXPathSegment = CreateXpathRecursively(parentElement);
 
                 return parentXPathSegment == null ? null : parentXPathSegment + xPathSegment;
-            } else
+            }
+            else
             {
                 return "/" + GetLocalXpathExpression(element);
             }
@@ -278,7 +283,6 @@ namespace AasxServerBlazor.Data
         private string CreateXpathRecursively(XAttribute attribute)
         {
             XElement parent = attribute.Parent;
-                       
             string xPathSegment = "/@" + attribute.Name;
             string parentXPathSegment = CreateXpathRecursively(parent);
 

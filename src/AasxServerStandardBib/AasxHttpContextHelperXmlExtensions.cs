@@ -25,7 +25,7 @@ namespace AasxRestServerLibrary
         {
             try
             {
-                XmlDocument xmlDocument = LoadXmlDocument(xmlFileStream);
+                XDocument xmlDocument = LoadXmlDocument(xmlFileStream);
                 XPathNodeIterator fragmentObjectsIterator = FindFragmentObjects(xmlDocument, xmlFragment);
 
                 if (fragmentObjectsIterator.Count > 1)
@@ -81,9 +81,7 @@ namespace AasxRestServerLibrary
         {
             try
             {
-                var doc = new XmlDocument();
-                doc.Load(xmlFileStream);
-                return doc;
+                return XDocument.Load(xmlFileStream);
             }
             catch
             {
@@ -91,7 +89,7 @@ namespace AasxRestServerLibrary
             }
         }
 
-        private static XPathNodeIterator FindFragmentObjects(XmlDocument xmlDocument, string xmlFragment)
+        private static XPathNodeIterator FindFragmentObjects(XDocument xmlDocument, string xmlFragment)
         {
             var xPath = xmlFragment.Trim('/');
 
@@ -266,7 +264,7 @@ namespace AasxRestServerLibrary
                 }
             }
 
-            foreach(var attribute in xmlElement.Attributes())
+            foreach (var attribute in xmlElement.Attributes())
             {
                 var attributeXpath = baseXpath + "/@" + attribute.Name;
                 paths.Add(attributeXpath);
