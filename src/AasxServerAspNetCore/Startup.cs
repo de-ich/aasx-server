@@ -91,6 +91,7 @@ internal class Startup
         services.AddTransient<ISecurityService, SecurityService>();
         services.AddTransient<IAasRegistryService, AasRegistryService>();
         services.AddTransient<IAasDescriptorPaginationService, AasDescriptorPaginationService>();
+        services.AddTransient<IFragmentService, FragmentService>();
 
         // Add GraphQL services
         services
