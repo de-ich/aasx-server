@@ -40,7 +40,7 @@ namespace IO.Swagger.Lib.V3.Services
                     fragmentValue = this.EvalGetAMLFragment(file, fragment, content, level, extent);
                     break;
                 case "xml":
-                    //fragmentValue = this.EvalGetXMLFragment(context, fileStream, decodedFragment);
+                    fragmentValue = this.EvalGetXMLFragment(file, fragment, content, level, extent);
                     break;
                 case "zip":
                     //fragmentValue = this.EvalGetZIPFragment(context, fileStream, decodedFragment);
