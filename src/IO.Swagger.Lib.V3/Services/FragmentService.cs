@@ -43,7 +43,7 @@ namespace IO.Swagger.Lib.V3.Services
                     fragmentValue = this.EvalGetXMLFragment(file, fragment, content, level, extent);
                     break;
                 case "zip":
-                    //fragmentValue = this.EvalGetZIPFragment(context, fileStream, decodedFragment);
+                    fragmentValue = this.EvalGetZipFragment(file, fragment, content, level, extent);
                     break;
                 case "xls":
                 case "xlsx":
