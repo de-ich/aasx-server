@@ -47,7 +47,7 @@ namespace IO.Swagger.Lib.V3.Services
                     break;
                 case "xls":
                 case "xlsx":
-                    //fragmentValue = this.EvalGetXLSFragment(context, fileStream, decodedFragment);
+                    fragmentValue = this.EvalGetXLSFragment(file, fragment, content, level, extent);
                     break;
                 // possibility to add support for more fragment types in the future
                 default:
