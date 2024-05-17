@@ -1,46 +1,47 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.Text;
-using Aml.Engine.CAEX;
-using System.IO;
-using Aml.Engine.AmlObjects;
-using Grapevine.Server;
-using System.Text.RegularExpressions;
-using System.Web;
-using Aml.Engine.CAEX.Extensions;
-using Newtonsoft.Json.Linq;
-using System.Xml.Linq;
-using System.Collections.Generic;
 using IO.Swagger.Models;
+using System.Collections.Generic;
+using IO.Swagger.Lib.V3.Interfaces;
+using Aml.Engine.CAEX;
+using Newtonsoft.Json;
+using System;
+using Aml.Engine.CAEX.Extensions;
+using AasxServerStandardBib.Services;
+using Newtonsoft.Json.Linq;
 using System.Linq;
-using IO.Swagger.Lib.V3.Exceptions;
-using Aml.Engine.Adapter;
-using Extensions;
+using AasxServerStandardBib.Interfaces;
 
 namespace IO.Swagger.Lib.V3.Services
 {
-    public static class FragmentServiceAmlExtensions
+    public class AmlFragmentObjectConverterService : IFragmentObjectConverterService
     {
-        /**
-         * This method is able to evaluate an AutomationML fragment and return a suitable serialization.
-         */
-        public static object? EvalGetAMLFragment(this FragmentService helper, byte[] amlFileContent, string amlFragment, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
-        {
-            CAEXBasicObject fragmentObject;
-            AutomationMLContainer amlContainer;
-            CAEXDocument caexDocument;
-            
-            (amlContainer, caexDocument) = LoadCaexDocument(amlFileContent);
-            fragmentObject = FindFragmentObject(caexDocument, amlFragment);
+        public Type[] SupportedFragmentObjectTypes => new Type[] { typeof(AmlFragmentObject) };
 
+        public object ConvertFragmentObject(IFragmentObject fragmentObject, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
+        {
+            if (!SupportedFragmentObjectTypes.Contains(fragmentObject.GetType()))
+            {
+                throw new AmlFragmentEvaluationException($"AmlFragmentObjectConverterService does not support fragment conversion for fragment object of type {fragmentObject.GetType()}!");
+            }
+
+            if (!(fragmentObject is AmlFragmentObject amlFragmentObject))
+            {
+                throw new AmlFragmentEvaluationException($"Unable to convert object of type {fragmentObject.GetType()} to 'AmlFragmentObject'!");
+            }
+
+            return ConvertFragmentObject(amlFragmentObject.CaexObject, amlFragmentObject.Blob, content, level, extent);
+        }
+
+        private object ConvertFragmentObject(CAEXBasicObject caexObject, byte[] blob, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
+        {
             if (level == LevelEnum.Core)
             {
-                DeeplyNestedElementsRemover.RemoveDeeplements(fragmentObject);
+                DeeplyNestedElementsRemover.RemoveDeeplements(caexObject);
             }
 
             if (extent == ExtentEnum.WithBlobValue)
             {
-                if (fragmentObject is ExternalInterfaceType externalInterface)
+
+                if (caexObject is ExternalInterfaceType externalInterface)
                 {
                     if (!externalInterface.HasInterfaceClassReference("AutomationMLInterfaceClassLib/AutomationMLBaseInterface/ExternalDataConnector", true))
                     {
@@ -54,81 +55,21 @@ namespace IO.Swagger.Lib.V3.Services
                         throw new AmlFragmentEvaluationException("Trying to evaluate extent 'WithBlobValue' but referenced ExternalDataConnector does not provide a 'refURI' attribute!");
                     }
 
-                    return amlContainer.GetPart(new Uri(refURI)).GetStream().ToByteArray();
+                    return blob;
 
-                } else
+                }
+                else
                 {
                     throw new AmlFragmentEvaluationException("Extent 'WithBlobValue' is only supported for fragment objects of type ExternalInterface!");
                 }
 
-            } else
-            {
-                JsonConverter converter = new AmlJsonConverter(content, extent);
-                return JsonConvert.SerializeObject(fragmentObject, Newtonsoft.Json.Formatting.Indented, converter);
-            }
-        }
-
-        public static Tuple<AutomationMLContainer?, CAEXDocument> LoadCaexDocument(byte[] amlFileContent)
-        {
-            try
-            {
-                // first try: 'normal' AML file
-                return new Tuple<AutomationMLContainer?, CAEXDocument> (null, CAEXDocument.LoadFromBinary(amlFileContent));
-            }
-            catch
-            {
-                // second try: AMLX package
-                try
-                {
-                    var amlContainer = new AutomationMLContainer(new MemoryStream(amlFileContent));
-                    return new Tuple<AutomationMLContainer?, CAEXDocument>(amlContainer, CAEXDocument.LoadFromStream(amlContainer.RootDocumentStream()));
-                }
-                catch
-                {
-                    throw new AmlFragmentEvaluationException($"Unable to load AML file/container from stream.");
-                }
-            }
-        }
-
-        private static CAEXBasicObject FindFragmentObject(CAEXDocument caexDocument, string amlFragment)
-        {
-            CAEXBasicObject fragmentObject;
-
-            String caexPath = amlFragment.Trim('/');
-            if (caexPath.Length == 0)
-            {
-                fragmentObject = caexDocument.CAEXFile;
             }
             else
             {
-
-                Regex guidFragmentRegEx = new Regex(@"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(.*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-                // If the path starts with an ID, we cannot use 'FindByPath'. Hence, we need to first find the element identified by the ID, get its CAEX path, and then build the resulting CAEX path.
-                if (guidFragmentRegEx.IsMatch(caexPath))
-                {
-                    MatchCollection idFragmentMatches = guidFragmentRegEx.Matches(amlFragment);
-                    var id = idFragmentMatches[0].Groups[1].ToString();
-                    var caexObject = caexDocument.FindByID(id);
-
-                    if (caexObject == null)
-                    {
-                        throw new AmlFragmentEvaluationException($"Unable to locate element with ID '" + id + "' within AML file.");
-                    }
-
-                    caexPath = caexObject.GetFullNodePath() + idFragmentMatches[0].Groups[2].ToString();
-                }
-
-                fragmentObject = caexDocument.FindByPath(caexPath);
+                JsonConverter converter = new AmlJsonConverter(content, extent);
+                return JsonConvert.SerializeObject(caexObject, Formatting.Indented, converter);
             }
-
-            if (fragmentObject == null)
-            {
-                throw new AmlFragmentEvaluationException($"Unable to locate element with path '" + amlFragment + "' within AML file.");
-            }
-
-            return fragmentObject;
         }
-
     }
 
     /**
@@ -144,8 +85,8 @@ namespace IO.Swagger.Lib.V3.Services
 
         public AmlJsonConverter(ContentEnum content = ContentEnum.Normal, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
         {
-            this.Content = content;
-            this.Extent = extent;
+            Content = content;
+            Extent = extent;
         }
 
         public override bool CanConvert(Type objectType)
@@ -356,18 +297,5 @@ namespace IO.Swagger.Lib.V3.Services
 
     }
 
-    /**
-     * An exception that indicates that something went wrong while evaluating an AML20 fragment.
-     */
-    public class AmlFragmentEvaluationException : FragmentException
-    {
 
-        public AmlFragmentEvaluationException(string message) : base(message)
-        {
-        }
-
-        public AmlFragmentEvaluationException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
-    }
 }

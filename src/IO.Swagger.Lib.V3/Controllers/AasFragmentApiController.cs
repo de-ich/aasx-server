@@ -25,15 +25,17 @@ namespace IO.Swagger.Lib.V3.Controllers
         private readonly IAssetAdministrationShellService _aasService;
         private readonly IBase64UrlDecoderService _decoderService;
         private readonly IAuthorizationService _authorizationService;
-        private readonly IFragmentService _fragmentService;
+        private readonly IFragmentObjectRetrievalService _fragmentRetrievalService;
+        private readonly IFragmentObjectConverterService _fragmentConverterService;
 
-        public AasFragmentApiController(IAppLogger<AasFragmentApiController> logger, IAssetAdministrationShellService aasService, IBase64UrlDecoderService decoderService, IAuthorizationService authorizationService, IFragmentService fragmentService)
+        public AasFragmentApiController(IAppLogger<AasFragmentApiController> logger, IAssetAdministrationShellService aasService, IBase64UrlDecoderService decoderService, IAuthorizationService authorizationService, IFragmentObjectRetrievalService fragmentRetrievalService, IFragmentObjectConverterService fragmentConverterService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger)); ;
             _aasService = aasService ?? throw new ArgumentNullException(nameof(aasService));
             _decoderService = decoderService ?? throw new ArgumentNullException(nameof(decoderService));
             _authorizationService = authorizationService ?? throw new ArgumentNullException(nameof(authorizationService));
-            _fragmentService = fragmentService ?? throw new ArgumentNullException(nameof(fragmentService));
+            _fragmentRetrievalService = fragmentRetrievalService ?? throw new ArgumentNullException(nameof(fragmentRetrievalService));
+            _fragmentConverterService = fragmentConverterService ?? throw new ArgumentNullException(nameof(fragmentConverterService));
         }
 
         /// <summary>
@@ -163,7 +165,9 @@ namespace IO.Swagger.Lib.V3.Controllers
 
             var fileName = _aasService.GetFileByPath(decodedAasIdentifier, decodedSubmodelIdentifier, idShortPath, out byte[] fileContent, out long fileSize);
 
-            var fragmentValue = _fragmentService.GetFragment(fileContent, fragmentType, decodedFragment, content, level, extent);
+            var fragmentObject = _fragmentRetrievalService.GetFragmentObject(fileContent, fragmentType, decodedFragment);
+
+            var fragmentValue = _fragmentConverterService.ConvertFragmentObject(fragmentObject, content, level, extent);
 
             return new ObjectResult(fragmentValue);
         }

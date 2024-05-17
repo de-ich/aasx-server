@@ -21,6 +21,8 @@
 	</ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aml.Engine" Version="3.2.2" />
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
     <PackageReference Include="Grapevine" Version="4.1.2" />
     <PackageReference Include="IdentityModel" Version="5.1.1" />
     <PackageReference Include="jose-jwt" Version="2.5.0" />

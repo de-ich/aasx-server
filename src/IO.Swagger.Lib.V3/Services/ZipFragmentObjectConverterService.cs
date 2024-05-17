@@ -1,87 +1,59 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.Text;
-using Aml.Engine.CAEX;
-using System.IO;
-using Aml.Engine.AmlObjects;
-using Grapevine.Server;
-using System.Text.RegularExpressions;
-using System.Web;
-using Aml.Engine.CAEX.Extensions;
-using Newtonsoft.Json.Linq;
-using System.Xml.Linq;
-using System.Collections.Generic;
 using IO.Swagger.Models;
+using System.Collections.Generic;
+using System.IO;
+using IO.Swagger.Lib.V3.Interfaces;
+using Newtonsoft.Json;
+using System;
+using AasxServerStandardBib.Services;
+using Newtonsoft.Json.Linq;
 using System.Linq;
-using IO.Swagger.Lib.V3.Exceptions;
-using Aml.Engine.Adapter;
-using Extensions;
-using Grapevine.Interfaces.Server;
-using System.Xml.XPath;
-using System.Xml;
-using AasxRestServerLibrary;
+using AasxServerStandardBib.Interfaces;
 using System.IO.Compression;
 
 namespace IO.Swagger.Lib.V3.Services
 {
-    public static class FragmentServiceZipExtensions
+    public class ZipFragmentObjectConverterService : IFragmentObjectConverterService
     {
-        /**
-         * This method is able to evaluate an AutomationML fragment and return a suitable serialization.
-         */
-        public static object? EvalGetZipFragment(this FragmentService helper, byte[] zipFileContent, string zipFragment, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
+        public Type[] SupportedFragmentObjectTypes => new Type[] { typeof(ZipFragmentObject) };
+
+        public object ConvertFragmentObject(IFragmentObject fragmentObject, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
         {
-            ZipArchive archive = LoadZipArchive(zipFileContent);
-
-            var fragmentObject = FindFragmentObject(archive, zipFragment);
-
-            if (fragmentObject == null)
+            if (!SupportedFragmentObjectTypes.Contains(fragmentObject.GetType()))
             {
-                throw new ZipFragmentEvaluationException($"Fragment evaluation did not return an element.");
+                throw new AmlFragmentEvaluationException($"ZipFragmentObjectConverterService does not support fragment conversion for fragment object of type {fragmentObject.GetType()}!");
+            }
+
+            if (!(fragmentObject is ZipFragmentObject zipFragmentObject))
+            {
+                throw new ZipFragmentEvaluationException($"Unable to convert object of type {fragmentObject.GetType()} to 'ZipFragmentObject'!");
             }
 
             if (extent == ExtentEnum.WithBlobValue)
             {
-                var stream = GetFragmentObjectAsStream(fragmentObject);
+                var stream = GetFragmentObjectAsStream(zipFragmentObject.ZipObject);
                 return stream;
             }
             else
             {
 
-                JsonConverter converter = new ZipJsonConverter(archive, content, extent, level);
-                return JsonConvert.SerializeObject(fragmentObject, Newtonsoft.Json.Formatting.Indented, converter);
+                JsonConverter converter = new ZipJsonConverter(zipFragmentObject.Archive, content, extent, level);
+                return JsonConvert.SerializeObject(zipFragmentObject.ZipObject, Newtonsoft.Json.Formatting.Indented, converter);
             }
         }
 
-        public static Stream EvalGetZIPFragmentAsStream(this AasxHttpContextHelper helper, IHttpContext context, byte[] zipFileContent, string zipFragment)
-        {
-            try
-            {
-                ZipArchive archive = LoadZipArchive(zipFileContent);
-
-                var fragmentObject = FindFragmentObject(archive, zipFragment);
-                var stream = GetFragmentObjectAsStream(fragmentObject);
-
-                return stream;
-            }
-            catch (ZipFragmentEvaluationException e)
-            {
-                context.Response.SendResponse(
-                    Grapevine.Shared.HttpStatusCode.NotFound,
-                    e.Message);
-                return null;
-            }
-        }
-
-
-        private static Stream GetFragmentObjectAsStream(dynamic fragmentObject)
+        private static Stream GetFragmentObjectAsStream(object fragmentObject)
         {
             if (fragmentObject is string)
             {
                 throw new ZipFragmentEvaluationException($"ZipFragment represents a folder. This is not supported when 'content' is set to 'raw'!");
             }
+            
+            if (!(fragmentObject is ZipArchiveEntry entry))
+            {
+                throw new ZipFragmentEvaluationException($"Unable to convert object of type {fragmentObject.GetType()} to ZipArchiveEntry!");
+            }
 
-            var fragmentObjectStream = fragmentObject.Open();
+            var fragmentObjectStream = entry.Open();
             var decompressedStream = new MemoryStream();
 
             // this will decompress the file
@@ -89,66 +61,6 @@ namespace IO.Swagger.Lib.V3.Services
             decompressedStream.Position = 0;
 
             return decompressedStream;
-        }
-
-        public static ZipArchive LoadZipArchive(byte[] zipFileContent)
-        {
-            try
-            {
-                return new ZipArchive(new MemoryStream(zipFileContent));
-            }
-            catch
-            {
-                throw new ZipFragmentEvaluationException($"Unable to load ZIP archive from stream.");
-            }
-        }
-
-        private static dynamic FindFragmentObject(ZipArchive archive, string zipFragment)
-        {
-            zipFragment = zipFragment.Trim('/');
-
-            if (zipFragment.Length == 0)
-            {
-                return zipFragment;
-            }
-
-            try
-            {
-                var entry = archive.GetEntry(zipFragment);
-
-                if (entry != null)
-                {
-                    if (!entry.FullName.EndsWith("/") && !entry.FullName.EndsWith("\\"))
-                    {
-                        return entry;
-                    }
-                    else
-                    {
-                        // path represents a directory
-                        return zipFragment;
-                    }
-                }
-                else
-                {
-                    // might be a directory that does not have its own entry
-                    var entries = archive.Entries.Where(e => e.FullName.StartsWith(zipFragment));
-
-                    if (entries.Count() > 0)
-                    {
-                        return zipFragment;
-                    }
-                    else
-                    {
-                        return null;
-                    }
-
-                }
-            }
-            catch
-            {
-                throw new ZipFragmentEvaluationException($"An error occurred while evaluating zip fragment '" + zipFragment);
-            }
-
         }
     }
 
@@ -169,10 +81,10 @@ namespace IO.Swagger.Lib.V3.Services
 
         public ZipJsonConverter(ZipArchive archive, ContentEnum content = ContentEnum.Normal, ExtentEnum extent = ExtentEnum.WithoutBlobValue, LevelEnum level = LevelEnum.Deep)
         {
-            this.Archive = archive;
-            this.Content = content;
-            this.Extent = extent;
-            this.Level = level;
+            Archive = archive;
+            Content = content;
+            Extent = extent;
+            Level = level;
         }
 
         public override bool CanConvert(Type objectType)
@@ -197,7 +109,7 @@ namespace IO.Swagger.Lib.V3.Services
 
             if (Content == ContentEnum.Normal)
             {
-                result = BuildJsonRecursively(this.Archive, zipEntry != null ? zipEntry.FullName : value as string, this.Level == LevelEnum.Deep);
+                result = BuildJsonRecursively(Archive, zipEntry != null ? zipEntry.FullName : value as string, Level == LevelEnum.Deep);
             }
             else if (Content == ContentEnum.Path)
             {
@@ -212,7 +124,7 @@ namespace IO.Swagger.Lib.V3.Services
                 }
 
                 result = new JArray();
-                result.Add(GetChildren(this.Archive, basePath, this.Level == LevelEnum.Deep));
+                result.Add(GetChildren(Archive, basePath, Level == LevelEnum.Deep));
             }
             else
             {
@@ -342,18 +254,4 @@ namespace IO.Swagger.Lib.V3.Services
 
     }
 
-    /**
-     * An exception that indicates that something went wrong while evaluating a ZIP fragment.
-     */
-    public class ZipFragmentEvaluationException : FragmentException
-    {
-
-        public ZipFragmentEvaluationException(string message) : base(message)
-        {
-        }
-
-        public ZipFragmentEvaluationException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
-    }
 }

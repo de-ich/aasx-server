@@ -1,81 +1,35 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.IO;
-using System.Web;
-using Newtonsoft.Json.Linq;
-using System.Collections.Generic;
 using IO.Swagger.Models;
+using System.Collections.Generic;
+using System.IO;
+using IO.Swagger.Lib.V3.Interfaces;
+using Newtonsoft.Json;
+using System;
+using AasxServerStandardBib.Services;
+using Newtonsoft.Json.Linq;
 using System.Linq;
-using IO.Swagger.Lib.V3.Exceptions;
+using AasxServerStandardBib.Interfaces;
 using ClosedXML.Excel;
 
 namespace IO.Swagger.Lib.V3.Services
 {
-    public static class FragmentServiceXlsExtensions
+    public class XlsFragmentObjectConverterService : IFragmentObjectConverterService
     {
-        /**
-         * This method is able to evaluate an Excel fragment and return a suitable serialization.
-         */
-        public static object? EvalGetXLSFragment(this FragmentService helper, byte[] xlsFileContent, string xlsFragment, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
-        {
-            XLWorkbook workbook = LoadXlsDocument(xlsFileContent);
+        public Type[] SupportedFragmentObjectTypes => new Type[] { typeof(XlsFragmentObject) };
 
-            object fragmentObject = FindFragmentObject(workbook, xlsFragment);
+        public object ConvertFragmentObject(IFragmentObject fragmentObject, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
+        {
+            if (!SupportedFragmentObjectTypes.Contains(fragmentObject.GetType()))
+            {
+                throw new XlsFragmentEvaluationException($"XlsFragmentObjectConverterService does not support fragment conversion for fragment object of type {fragmentObject.GetType()}!");
+            }
+
+            if (!(fragmentObject is XlsFragmentObject xlsFragmentObject))
+            {
+                throw new AmlFragmentEvaluationException($"Unable to convert object of type {fragmentObject.GetType()} to 'XlsFragmentObject'!");
+            }
 
             JsonConverter converter = new XlsJsonConverter(content, extent);
-            return JsonConvert.SerializeObject(fragmentObject, Newtonsoft.Json.Formatting.Indented, converter);
-        }
-
-        private static XLWorkbook LoadXlsDocument(byte[] xlsFileContent)
-        {
-            try
-            {
-                return new XLWorkbook(new MemoryStream(xlsFileContent));
-            }
-            catch
-            {
-                throw new XlsFragmentEvaluationException($"Unable to load XLS file from stream.");
-            }
-        }
-
-        private static object FindFragmentObject(XLWorkbook workbook, string xlsFragment)
-        {
-            var xlsExpression = xlsFragment.Trim('/');
-
-            try
-            {
-                if (xlsExpression.Length == 0)
-                {
-                    // provided expression references the complete workbook
-                    return workbook;
-                }
-                else if (xlsExpression.StartsWith("="))
-                {
-                    // provided expression is a formula
-                    return workbook.Evaluate(xlsExpression.Substring(1));
-                }
-                else if (xlsExpression.Contains(':'))
-                {
-                    // provided expression is reference to a cell range
-                    return workbook.Cells(xlsExpression);
-                }
-                else if (xlsExpression.Contains('!'))
-                {
-                    // provided expression is a reference to a single cell
-                    return workbook.Cell(xlsExpression);
-                }
-                else
-                {
-                    // provided expression is a reference to a worksheet
-                    return workbook.Worksheet(xlsExpression);
-                }
-
-            }
-            catch
-            {
-                throw new XlsFragmentEvaluationException("An error occurred while evaluating Excel expression '" + xlsExpression + "'!");
-            }
-
+            return JsonConvert.SerializeObject(xlsFragmentObject.XLObject, Newtonsoft.Json.Formatting.Indented, converter);
         }
     }
 
@@ -90,14 +44,14 @@ namespace IO.Swagger.Lib.V3.Services
 
         public XlsJsonConverter(ContentEnum content = ContentEnum.Normal, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
         {
-            this.Content = content;
-            this.Extent = extent;
+            Content = content;
+            Extent = extent;
         }
 
         public override bool CanConvert(Type objectType)
         {
             return typeof(XLWorkbook).IsAssignableFrom(objectType) || typeof(IXLWorksheet).IsAssignableFrom(objectType) ||
-                typeof(IXLCell).IsAssignableFrom(objectType) || typeof(IXLCells).IsAssignableFrom(objectType) || 
+                typeof(IXLCell).IsAssignableFrom(objectType) || typeof(IXLCells).IsAssignableFrom(objectType) ||
                 typeof(XLCellValue).IsAssignableFrom(objectType) || typeof(string).IsAssignableFrom(objectType);
         }
         public override bool CanRead
@@ -115,7 +69,7 @@ namespace IO.Swagger.Lib.V3.Services
 
             JContainer result;
 
-            bool valueOnly = (Content == ContentEnum.Value);
+            bool valueOnly = Content == ContentEnum.Value;
 
             if (value is XLWorkbook workbook)
             {
@@ -132,7 +86,8 @@ namespace IO.Swagger.Lib.V3.Services
             else if (value is IXLCell cell)
             {
                 result = CompileJson(cell, valueOnly);
-            } else if (value is XLCellValue cellValue)
+            }
+            else if (value is XLCellValue cellValue)
             {
                 result = CompileJson(cellValue, valueOnly);
             }
@@ -269,18 +224,4 @@ namespace IO.Swagger.Lib.V3.Services
     }
 
 
-    /**
-     * An exception that indicates that something went wrong while evaluating an XLS fragment.
-     */
-    public class XlsFragmentEvaluationException : FragmentException
-    {
-
-        public XlsFragmentEvaluationException(string message) : base(message)
-        {
-        }
-
-        public XlsFragmentEvaluationException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
-    }
 }

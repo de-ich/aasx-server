@@ -1,111 +1,48 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.Text;
-using Aml.Engine.CAEX;
-using System.IO;
-using Aml.Engine.AmlObjects;
-using Grapevine.Server;
-using System.Text.RegularExpressions;
-using System.Web;
-using Aml.Engine.CAEX.Extensions;
-using Newtonsoft.Json.Linq;
-using System.Xml.Linq;
-using System.Collections.Generic;
 using IO.Swagger.Models;
+using System.Collections.Generic;
+using System.IO;
+using IO.Swagger.Lib.V3.Interfaces;
+using Newtonsoft.Json;
+using System;
+using AasxServerStandardBib.Services;
+using Newtonsoft.Json.Linq;
 using System.Linq;
-using IO.Swagger.Lib.V3.Exceptions;
-using Aml.Engine.Adapter;
-using Extensions;
-using Grapevine.Interfaces.Server;
-using System.Xml.XPath;
+using AasxServerStandardBib.Interfaces;
+using System.Xml.Linq;
 using System.Xml;
+using System.Xml.XPath;
 
 namespace IO.Swagger.Lib.V3.Services
 {
-    public static class FragmentServiceXmlExtensions
+    public class XmlFragmentObjectConverterService : IFragmentObjectConverterService
     {
-        /**
-         * This method is able to evaluate an AutomationML fragment and return a suitable serialization.
-         */
-        public static object? EvalGetXMLFragment(this FragmentService helper, byte[] xmlFileContent, string xmlFragment, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
+        public Type[] SupportedFragmentObjectTypes => new Type[] { typeof(XmlFragmentObject) };
+
+        public object ConvertFragmentObject(IFragmentObject fragmentObject, ContentEnum content = ContentEnum.Normal, LevelEnum level = LevelEnum.Deep, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
         {
-            XDocument xmlDocument = LoadXmlDocument(xmlFileContent);
-            IEnumerable<XObject> fragmentObjects = FindFragmentObjects(xmlDocument, xmlFragment);
+            if (!SupportedFragmentObjectTypes.Contains(fragmentObject.GetType()))
+            {
+                throw new AmlFragmentEvaluationException($"AmlFragmentObjectConverterService does not support fragment conversion for fragment object of type {fragmentObject.GetType()}!");
+            }
+
+            if (!(fragmentObject is XmlFragmentObject xmlFragmentObject))
+            {
+                throw new AmlFragmentEvaluationException($"Unable to convert object of type {fragmentObject.GetType()} to 'XmlFragmentObject'!");
+            }
 
             if (level == LevelEnum.Core)
             {
-                foreach (var fragmentObject in fragmentObjects)
+                foreach (var node in xmlFragmentObject.Nodes)
                 {
-                    if (fragmentObject.NodeType == XmlNodeType.Element)
+                    if (node.NodeType == XmlNodeType.Element)
                     {
-                        RemoveDeeplements(fragmentObject as XElement);
+                        RemoveDeeplements(node as XElement);
                     }
                 }
             }
 
-            JsonConverter converter = new XmlJsonConverter(xmlFragment, content, extent);
-            return JsonConvert.SerializeObject(fragmentObjects, Newtonsoft.Json.Formatting.Indented, converter);
-        }
-
-        public static XDocument LoadXmlDocument(byte[] xmlFileContent)
-        {
-            try
-            {
-                return XDocument.Load(new MemoryStream(xmlFileContent));
-            }
-            catch
-            {
-                throw new XmlFragmentEvaluationException($"Unable to load XML file from stream.");
-            }
-        }
-
-        private static IEnumerable<XObject> FindFragmentObjects(XDocument xmlDocument, string xmlFragment)
-        {
-            // select the root element if the fragment is empty
-            var xPath = (xmlFragment == null || xmlFragment.Length == 0) ? "/*" : xmlFragment;
-
-            XmlNamespaceManager manager = CreateNamespaceManager(xmlDocument);
-
-            object result;
-            try
-            {
-                result = xmlDocument.XPathEvaluate(xPath, manager);
-            }
-            catch
-            {
-                throw new XmlFragmentEvaluationException($"Unable to compile xPath query '" + xPath + "'.");
-            }
-
-            IEnumerable<XObject> nodes;
-            try
-            {
-                nodes = ((IEnumerable<object>)result).Cast<XObject>();
-            }
-            catch
-            {
-                throw new XmlFragmentEvaluationException($"Evaluating xPath query '" + xPath + "' did not return a node list.");
-            }
-
-            if (nodes.Count() == 0)
-            {
-                throw new XmlFragmentEvaluationException($"Evaluating xPath query '" + xPath + "' did not return a result.");
-            }
-
-            return nodes;
-        }
-
-        private static XmlNamespaceManager CreateNamespaceManager(XDocument xmlDocument)
-        {
-            XPathNavigator navigator = xmlDocument.CreateNavigator();
-            XmlNamespaceManager manager = new XmlNamespaceManager(navigator.NameTable);
-            navigator.MoveToFollowing(XPathNodeType.Element);
-            IDictionary<string, string> namespaces = navigator.GetNamespacesInScope(XmlNamespaceScope.All);
-            foreach (KeyValuePair<string, string> ns in namespaces)
-            {
-                manager.AddNamespace(ns.Key, ns.Value);
-            }
-
-            return manager;
+            JsonConverter converter = new XmlJsonConverter(xmlFragmentObject.Fragment, content, extent);
+            return JsonConvert.SerializeObject(xmlFragmentObject.Nodes, Newtonsoft.Json.Formatting.Indented, converter);
         }
 
         /**
@@ -142,9 +79,9 @@ namespace IO.Swagger.Lib.V3.Services
 
         public XmlJsonConverter(string xmlFragment, ContentEnum content = ContentEnum.Normal, ExtentEnum extent = ExtentEnum.WithoutBlobValue)
         {
-            this.BaseXpath = xmlFragment;
-            this.Content = content;
-            this.Extent = extent;
+            BaseXpath = xmlFragment;
+            Content = content;
+            Extent = extent;
         }
 
         public override bool CanConvert(Type objectType)
@@ -221,7 +158,7 @@ namespace IO.Swagger.Lib.V3.Services
                     throw new XmlFragmentEvaluationException($"Fragment evaluation did not return an Element but a(n) " + node.NodeType + ". This is not supported when returning path information!");
                 }
 
-                var elementXpath = (BaseXpath == null || BaseXpath.Length == 0 || BaseXpath == "/*") ? "/" + GetLocalXpathExpression(node as XElement) : BaseXpath;
+                var elementXpath = BaseXpath == null || BaseXpath.Length == 0 || BaseXpath == "/*" ? "/" + GetLocalXpathExpression(node as XElement) : BaseXpath;
 
                 List<string> paths = CollectChildXpathPathsRecursively(node as XElement, elementXpath);
                 result = JArray.FromObject(paths);
@@ -334,18 +271,5 @@ namespace IO.Swagger.Lib.V3.Services
 
     }
 
-    /**
-     * An exception that indicates that something went wrong while evaluating an XML fragment.
-     */
-    public class XmlFragmentEvaluationException : FragmentException
-    {
 
-        public XmlFragmentEvaluationException(string message) : base(message)
-        {
-        }
-
-        public XmlFragmentEvaluationException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
-    }
 }

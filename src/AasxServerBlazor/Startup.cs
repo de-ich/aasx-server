@@ -115,7 +115,8 @@ namespace AasxServerBlazor
             services.AddTransient<ISecurityService, SecurityService>();
             services.AddTransient<IAasRegistryService, AasRegistryService>();
             services.AddTransient<IAasDescriptorPaginationService, AasDescriptorPaginationService>();
-            services.AddTransient<IFragmentService, FragmentService>();
+            services.AddTransient<IFragmentObjectRetrievalService, FragmentObjectRetrievalServiceDelegator>();
+            services.AddTransient<IFragmentObjectConverterService, FragmentObjecConverterServiceDelegator>();
 
             // Add GraphQL services
             services
